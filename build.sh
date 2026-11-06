@@ -10,11 +10,13 @@ ARCH="$(uname -m)"
 MIN_OS="10.15"
 
 echo "==> 编译 (${ARCH}, macOS >= ${MIN_OS})"
-mkdir -p "${BUNDLE}/Contents/MacOS" "${BUNDLE}/Contents/Resources"
+mkdir -p "${BUNDLE}/Contents/MacOS" "${BUNDLE}/Contents/Resources" build
+# csrc/ 含 ObjC 异常防护层（Swift 接不住 NSException），经 modulemap 供 Swift import
 swiftc -O -swift-version 5 \
   -target "${ARCH}-apple-macos${MIN_OS}" \
+  -I csrc \
   -o "${BUNDLE}/Contents/MacOS/${APP_NAME}" \
-  Sources/*.swift
+  Sources/*.swift csrc/ExceptionGuard.m
 
 echo "==> 生成 Info.plist"
 cat > "${BUNDLE}/Contents/Info.plist" <<'PLIST'

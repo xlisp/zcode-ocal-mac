@@ -130,24 +130,26 @@ final class CameraService: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     static func setFormat(_ format: AVCaptureDevice.Format, on device: AVCaptureDevice) {
         do {
             try device.lockForConfiguration()
+        } catch {
+            NSLog("锁定相机配置失败: \(error.localizedDescription)")
+            return
+        }
+        defer { device.unlockForConfiguration() }
+        // UVC(DAL) 设备的这些 setter 可能抛 ObjC 异常，必须经 ObjCGuard 捕获
+        ObjCGuard.catching("setFormat") {
             device.activeFormat = format
-            // 帧率设置：先放宽到范围边界，再逐步收紧。
-            // 注意顺序必须先 max 后 min，否则会出现 min > max 的瞬态而抛 ObjC 异常。
+            // 帧率：先放宽到范围边界再收紧（顺序必须先 max 后 min，避免 min>max 瞬态）
             if let range = format.videoSupportedFrameRateRanges.max(by: { $0.maxFrameRate < $1.maxFrameRate }) {
                 let maxD = range.maxFrameDuration    // 最长（最慢）
                 let minD = range.minFrameDuration    // 最短（最快）
                 let fps = min(max(range.maxFrameRate, 1), 30)
                 let desired = CMTime(value: 1, timescale: CMTimeScale(max(fps, 1).rounded()))
-                // 收紧到目标帧率（限制在支持范围内）
                 let clamped = CMTimeMinimum(CMTimeMaximum(desired, minD), maxD)
                 device.activeVideoMaxFrameDuration = maxD
                 device.activeVideoMinFrameDuration = minD
                 device.activeVideoMaxFrameDuration = clamped
                 device.activeVideoMinFrameDuration = clamped
             }
-            device.unlockForConfiguration()
-        } catch {
-            NSLog("设置相机格式失败: \(error.localizedDescription)")
         }
     }
 

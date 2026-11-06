@@ -1,0 +1,4 @@
+module CExceptionGuard {
+    header "ExceptionGuard.h"
+    export *
+}

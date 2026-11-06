@@ -64,6 +64,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // 相机插入/拔出时刷新设备列表（保持当前选择）
+        let center = NotificationCenter.default
+        center.addObserver(forName: .AVCaptureDeviceWasConnected, object: nil, queue: .main) { [weak self] _ in
+            self?.refreshDeviceList()
+        }
+        center.addObserver(forName: .AVCaptureDeviceWasDisconnected, object: nil, queue: .main) { [weak self] _ in
+            self?.refreshDeviceList()
+        }
+        // 下拉框每次展开前刷新（授权完成后列表可能才可用）
+        panel.onRefreshDevices = { [weak self] in self?.refreshDeviceList() }
+
         window.center()
         window.makeKeyAndOrderFront(nil)
         saveEnabled = true
@@ -196,7 +207,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshDeviceList(selected: AVCaptureDevice? = nil) {
         let devices = CameraService.discoverDevices()
         let lastID = UserDefaults.standard.string(forKey: "lastDeviceID")
-        var pick = selected
+        // 优先保持当前选择，其次上次使用的设备，最后外接相机（排序后第一个）
+        var pick = selected ?? panel.selectedDevice
         if pick == nil { pick = devices.first(where: { $0.uniqueID == lastID }) }
         if pick == nil { pick = devices.first }
         panel.setDevices(devices, selected: pick)
@@ -227,11 +239,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
+            refreshDeviceList()  // 授权上下文下列表才完整
             start()
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 DispatchQueue.main.async {
-                    if granted { start() }
+                    if granted {
+                        // 授权完成后 macOS 才会暴露外接相机，必须重新枚举
+                        self.refreshDeviceList()
+                        start()
+                    }
                     else {
                         self.showAlert(messageText: "无法访问摄像头",
                                        informativeText: "请在 系统设置 → 隐私与安全性 → 摄像头 中允许 OCAL 访问。")

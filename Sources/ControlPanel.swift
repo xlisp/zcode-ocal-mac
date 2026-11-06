@@ -13,6 +13,8 @@ final class ControlPanel: NSView {
     var onProfileSelected: ((String) -> Void)?
     var onSaveFocus: (() -> Void)?
     var onLoadFocus: (() -> Void)?
+    /// 相机下拉框展开前触发，用于重新枚举设备（授权完成前 macOS 只暴露内置相机）
+    var onRefreshDevices: (() -> Void)?
 
     // MARK: 状态
     private(set) var settings = Settings()
@@ -59,6 +61,7 @@ final class ControlPanel: NSView {
         devicePopup.target = self
         devicePopup.action = #selector(deviceChanged(_:))
         devicePopup.controlSize = .small
+        devicePopup.menu?.delegate = self
         addFullWidthRow(devicePopup)
 
         let buttonRow = NSStackView(views: [])
@@ -372,6 +375,15 @@ final class ControlPanel: NSView {
 
     func setStoreHint(_ text: String) {
         storeField.stringValue = text
+    }
+}
+
+// MARK: - NSMenuDelegate（相机下拉框展开前刷新设备列表）
+
+extension ControlPanel: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === devicePopup.menu else { return }
+        onRefreshDevices?()
     }
 }
 

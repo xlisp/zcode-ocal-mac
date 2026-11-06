@@ -212,13 +212,15 @@ final class CameraSettingsController: NSWindowController, NSWindowDelegate {
         do {
             try device.lockForConfiguration()
             defer { device.unlockForConfiguration() }
-            if auto {
-                if device.isExposureModeSupported(.continuousAutoExposure) { device.exposureMode = .continuousAutoExposure }
-                else if device.isExposureModeSupported(.autoExpose) { device.exposureMode = .autoExpose }
-            } else {
-                // 手动：custom（若支持，此时帧时长即曝光时长）否则锁定当前
-                if device.isExposureModeSupported(.custom) { device.exposureMode = .custom }
-                else if device.isExposureModeSupported(.locked) { device.exposureMode = .locked }
+            ObjCGuard.catching("exposureMode") {
+                if auto {
+                    if device.isExposureModeSupported(.continuousAutoExposure) { device.exposureMode = .continuousAutoExposure }
+                    else if device.isExposureModeSupported(.autoExpose) { device.exposureMode = .autoExpose }
+                } else {
+                    // 手动：custom（若支持，此时帧时长即曝光时长）否则锁定当前
+                    if device.isExposureModeSupported(.custom) { device.exposureMode = .custom }
+                    else if device.isExposureModeSupported(.locked) { device.exposureMode = .locked }
+                }
             }
         } catch { showAlert(error) }
         refresh()
@@ -233,12 +235,14 @@ final class CameraSettingsController: NSWindowController, NSWindowDelegate {
         do {
             try device.lockForConfiguration()
             defer { device.unlockForConfiguration() }
-            if device.exposureMode != .custom, device.isExposureModeSupported(.custom) {
-                device.exposureMode = .custom
+            ObjCGuard.catching("shutter") {
+                if device.exposureMode != .custom, device.isExposureModeSupported(.custom) {
+                    device.exposureMode = .custom
+                }
+                // 先 max 后 min，避免 min > max 瞬态
+                device.activeVideoMaxFrameDuration = duration
+                device.activeVideoMinFrameDuration = duration
             }
-            // 先 max 后 min，避免 min > max 瞬态抛异常
-            device.activeVideoMaxFrameDuration = duration
-            device.activeVideoMinFrameDuration = duration
         } catch { showAlert(error) }
         syncShutterUI()
     }
@@ -248,12 +252,14 @@ final class CameraSettingsController: NSWindowController, NSWindowDelegate {
         do {
             try device.lockForConfiguration()
             defer { device.unlockForConfiguration() }
-            if auto {
-                if device.isFocusModeSupported(.continuousAutoFocus) { device.focusMode = .continuousAutoFocus }
-                else if device.isFocusModeSupported(.autoFocus) { device.focusMode = .autoFocus }
-            } else {
-                // 锁定当前对焦位置（macOS 不提供镜头位置数值控制）
-                if device.isFocusModeSupported(.locked) { device.focusMode = .locked }
+            ObjCGuard.catching("focusMode") {
+                if auto {
+                    if device.isFocusModeSupported(.continuousAutoFocus) { device.focusMode = .continuousAutoFocus }
+                    else if device.isFocusModeSupported(.autoFocus) { device.focusMode = .autoFocus }
+                } else {
+                    // 锁定当前对焦位置（macOS 不提供镜头位置数值控制）
+                    if device.isFocusModeSupported(.locked) { device.focusMode = .locked }
+                }
             }
         } catch { showAlert(error) }
         refresh()
@@ -264,12 +270,14 @@ final class CameraSettingsController: NSWindowController, NSWindowDelegate {
         do {
             try device.lockForConfiguration()
             defer { device.unlockForConfiguration() }
-            if auto {
-                if device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
-                    device.whiteBalanceMode = .continuousAutoWhiteBalance
+            ObjCGuard.catching("whiteBalanceMode") {
+                if auto {
+                    if device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
+                        device.whiteBalanceMode = .continuousAutoWhiteBalance
+                    }
+                } else {
+                    if device.isWhiteBalanceModeSupported(.locked) { device.whiteBalanceMode = .locked }
                 }
-            } else {
-                if device.isWhiteBalanceModeSupported(.locked) { device.whiteBalanceMode = .locked }
             }
         } catch { showAlert(error) }
         refresh()
