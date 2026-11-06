@@ -75,12 +75,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func dumpFrames() {
-        guard let cw = window.contentView else { print("DBG no content"); return }
-        print("DBG content: \(cw.frame)")
-        for v in cw.subviews { print("DBG   \(type(of: v)): \(v.frame)") }
-        if let doc = panelScroll.documentView { print("DBG docView: \(doc.frame)") }
-        print("DBG videoView: \(videoView.frame) panelScroll: \(panelScroll.frame)")
-        print("DBG window: \(window.frame) isVisible=\(window.isVisible) occlusion=\(window.occlusionState.rawValue)")
+        var lines: [String] = []
+        guard let cw = window.contentView else { lines.append("no content"); return }
+        lines.append("content: \(cw.frame)")
+        for v in cw.subviews { lines.append("  \(type(of: v)): \(v.frame)") }
+        if let doc = panelScroll.documentView { lines.append("docView: \(doc.frame)") }
+        lines.append("videoView: \(videoView.frame) panelScroll: \(panelScroll.frame)")
+        lines.append("window: \(window.frame) isVisible=\(window.isVisible) occlusion=\(window.occlusionState.rawValue)")
+        try? lines.joined(separator: "\n").write(toFile: "/tmp/ocal-dump.txt", atomically: true, encoding: .utf8)
     }
 
     // MARK: - 窗口
