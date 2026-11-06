@@ -3,7 +3,8 @@ import AVFoundation
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
-    private var window: NSWindow!
+    private var videoWindow: NSWindow!
+    private var settingsWindow: NSWindow!
     private var videoView: VideoView!
     private var panel: ControlPanel!
     private var panelScroll: NSScrollView!
@@ -20,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindowController: CameraSettingsController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        buildWindow()
+        buildWindows()
 
         // 初始设置：上次使用的档案，默认 4k
         let lastProfile = UserDefaults.standard.string(forKey: "lastProfile") ?? "4k"
@@ -83,9 +84,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.setFocusInfo("定心：focus.txt 未配置（圆心=画面中心）")
         }
 
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-        window.makeFirstResponder(videoView)
+        positionWindows()
+        videoWindow.makeKeyAndOrderFront(nil)
+        settingsWindow.orderFrontRegardless()
+        videoWindow.makeFirstResponder(videoView)
         buildMenu()
         saveEnabled = true
 
@@ -101,21 +103,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
-    // MARK: - 窗口
+    // MARK: - 窗口（设置面板与视频画面分离，视频放大/全屏时调参不受遮挡）
 
-    private func buildWindow() {
-        window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
+    private func buildWindows() {
+        // 视频主窗口
+        videoWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1100, height: 760),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
-        window.title = "OCAL — 准直仪校准 v1.32"
-        window.minSize = NSSize(width: 940, height: 560)
-        window.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1)
-
-        let content = NSView()
-        window.contentView = content
+        videoWindow.title = "OCAL — 准直仪校准 v1.32"
+        videoWindow.minSize = NSSize(width: 480, height: 360)
+        videoWindow.backgroundColor = NSColor(calibratedWhite: 0.08, alpha: 1)
+        videoWindow.setFrameAutosaveName("OCALVideoWindow")
+        videoWindow.delegate = self
 
         videoView = VideoView(frame: .zero)
+        let videoContent = NSView()
+        videoWindow.contentView = videoContent
+        videoView.translatesAutoresizingMaskIntoConstraints = false
+        videoContent.addSubview(videoView)
+        NSLayoutConstraint.activate([
+            videoView.leadingAnchor.constraint(equalTo: videoContent.leadingAnchor),
+            videoView.trailingAnchor.constraint(equalTo: videoContent.trailingAnchor),
+            videoView.topAnchor.constraint(equalTo: videoContent.topAnchor),
+            videoView.bottomAnchor.constraint(equalTo: videoContent.bottomAnchor),
+        ])
+
+        // 设置窗口（悬浮，始终在视频窗口上方）
         panel = ControlPanel(frame: .zero)
         panelScroll = NSScrollView()
         panelScroll.documentView = panel
@@ -125,31 +139,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelScroll.backgroundColor = NSColor.controlBackgroundColor
         panelScroll.borderType = .noBorder
         // documentView 需要显式初始尺寸：先按内容算高度，再跟随滚动视图宽度
+        let panelWidth: CGFloat = 264
         panel.setFrameOrigin(.zero)
-        panel.setFrameSize(NSSize(width: 248, height: 0))
+        panel.setFrameSize(NSSize(width: panelWidth, height: 0))
         let fittingHeight = panel.fittingSize.height
-        panel.setFrameSize(NSSize(width: 248, height: max(fittingHeight, 100)))
+        panel.setFrameSize(NSSize(width: panelWidth, height: max(fittingHeight, 100)))
         panel.autoresizingMask = [.width]
 
-        for v: NSView in [panelScroll, videoView] {
-            content.addSubview(v)
-            v.translatesAutoresizingMaskIntoConstraints = false
-        }
-
-        NSLayoutConstraint.activate([
-            // 左侧面板固定宽度
-            panelScroll.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            panelScroll.topAnchor.constraint(equalTo: content.topAnchor),
-            panelScroll.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            panelScroll.widthAnchor.constraint(equalToConstant: 248),
-            // 右侧视频区
-            videoView.leadingAnchor.constraint(equalTo: panelScroll.trailingAnchor),
-            videoView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            videoView.topAnchor.constraint(equalTo: content.topAnchor),
-            videoView.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-        ])
+        let panelHeight = min(fittingHeight + 2, NSScreen.main?.visibleFrame.height ?? fittingHeight)
+        settingsWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered, defer: false)
+        settingsWindow.title = "OCAL 设置"
+        settingsWindow.minSize = NSSize(width: 240, height: 300)
+        settingsWindow.level = .floating
+        settingsWindow.isReleasedWhenClosed = false
+        settingsWindow.setFrameAutosaveName("OCALSettingsWindow")
+        settingsWindow.delegate = self
+        settingsWindow.contentView = panelScroll
 
         wirePanel()
+    }
+
+    private func positionWindows() {
+        let defaults = UserDefaults.standard
+        let videoFrameSaved = defaults.string(forKey: "NSWindow Frame OCALVideoWindow") != nil
+        let settingsFrameSaved = defaults.string(forKey: "NSWindow Frame OCALSettingsWindow") != nil
+        if !videoFrameSaved {
+            videoWindow.center()
+        }
+        if !settingsFrameSaved {
+            // 默认摆在视频窗口左侧
+            let vf = videoWindow.frame
+            var f = settingsWindow.frame
+            f.origin.x = max(0, vf.minX - f.width - 16)
+            f.origin.y = max(0, vf.minY)
+            settingsWindow.setFrame(f, display: false)
+        }
     }
 
     private func wirePanel() {
@@ -166,6 +193,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         panel.onCameraSettings = { [weak self] in self?.openCameraSettings() }
+        panel.onAdjustHint = { [weak self] text in
+            self?.videoView.showAdjustHint(text)
+        }
         panel.onProfileSelected = { [weak self] name in
             guard let self = self else { return }
             var s = ConfigStore.load(profile: name)
@@ -337,5 +367,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.informativeText = informativeText
         alert.addButton(withTitle: "好")
         alert.runModal()
+    }
+}
+
+// MARK: - NSWindowDelegate
+
+extension AppDelegate: NSWindowDelegate {
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        // 视频窗口成为焦点时确保缩放快捷键（响应者链）可用
+        if (notification.object as? NSWindow) === videoWindow {
+            videoWindow.makeFirstResponder(videoView)
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let w = notification.object as? NSWindow else { return }
+        if w === videoWindow {
+            // 关闭视频窗口 = 退出应用
+            NSApp.terminate(nil)
+        } else if w === settingsWindow {
+            // 设置窗口关闭仅隐藏，视频窗口仍在
+        }
     }
 }

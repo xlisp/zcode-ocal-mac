@@ -15,6 +15,8 @@ final class ControlPanel: NSView {
     var onLoadFocus: (() -> Void)?
     /// 相机下拉框展开前触发，用于重新枚举设备（授权完成前 macOS 只暴露内置相机）
     var onRefreshDevices: (() -> Void)?
+    /// 滑杆/数值调整时触发（用于视频画面上的大字号数值提示）
+    var onAdjustHint: ((String) -> Void)?
 
     // MARK: 状态
     private(set) var settings = Settings()
@@ -102,10 +104,10 @@ final class ControlPanel: NSView {
         addFullWidthRow(storeField)
 
         // ── 圈1 / 圈2 / 圈3 ──────────────────────────
-        for (title, circle): (String, WritableKeyPath<Settings, CircleConfig>) in [
-            ("圈1设置", \Settings.circle1),
-            ("圈2设置", \Settings.circle2),
-            ("圈3设置", \Settings.circle3),
+        for (title, hintPrefix, circle): (String, String, WritableKeyPath<Settings, CircleConfig>) in [
+            ("圈1设置", "圈1", \Settings.circle1),
+            ("圈2设置", "圈2", \Settings.circle2),
+            ("圈3设置", "圈3", \Settings.circle3),
         ] {
             addHeader(title)
             addCheckboxRow(label: "启    用",
@@ -114,10 +116,10 @@ final class ControlPanel: NSView {
             addColorRow(label: "颜    色",
                         getColor: { $0[keyPath: circle].color },
                         setColor: { s, c in s[keyPath: circle].color = c })
-            addSliderRow(label: "半    径", min: 0, max: 4000,
+            addSliderRow(label: "半    径", hint: "\(hintPrefix) 半径", min: 0, max: 4000,
                          get: { $0[keyPath: circle].radius },
                          set: { s, v in s[keyPath: circle].radius = v })
-            addSliderRow(label: "粗    细", min: 1, max: 40,
+            addSliderRow(label: "粗    细", hint: "\(hintPrefix) 粗细", min: 1, max: 40,
                          get: { $0[keyPath: circle].thickness },
                          set: { s, v in s[keyPath: circle].thickness = v })
         }
@@ -128,11 +130,11 @@ final class ControlPanel: NSView {
                        get: { $0.cross.enabled }, set: { s, v in s.cross.enabled = v })
         addColorRow(label: "颜    色",
                     getColor: { $0.cross.color }, setColor: { s, c in s.cross.color = c })
-        addSliderRow(label: "长    度", min: 0, max: 4000,
+        addSliderRow(label: "长    度", hint: "准星 长度", min: 0, max: 4000,
                      get: { $0.cross.length }, set: { s, v in s.cross.length = v })
-        addSliderRow(label: "粗    细", min: 1, max: 40,
+        addSliderRow(label: "粗    细", hint: "准星 粗细", min: 1, max: 40,
                      get: { $0.cross.thickness }, set: { s, v in s.cross.thickness = v })
-        addSliderRow(label: "角    度", min: 0, max: 360,
+        addSliderRow(label: "角    度", hint: "准星 角度", min: 0, max: 360,
                      get: { $0.cross.angle }, set: { s, v in s.cross.angle = v })
 
         // ── 圆心偏移 ──────────────────────────────
@@ -143,9 +145,9 @@ final class ControlPanel: NSView {
         addFullWidthRow(focusField)
         addCheckboxRow(label: "启用圆心偏移",
                        get: { $0.offset.enabled }, set: { s, v in s.offset.enabled = v })
-        addSliderRow(label: "上    下", min: -100, max: 100,
+        addSliderRow(label: "上    下", hint: "偏移 上下", min: -100, max: 100,
                      get: { $0.offset.vertical }, set: { s, v in s.offset.vertical = v })
-        addSliderRow(label: "左    右", min: -100, max: 100,
+        addSliderRow(label: "左    右", hint: "偏移 左右", min: -100, max: 100,
                      get: { $0.offset.horizontal }, set: { s, v in s.offset.horizontal = v })
 
         let focusRow = NSStackView(views: [])
@@ -233,11 +235,11 @@ final class ControlPanel: NSView {
         }
     }
 
-    /// 滑杆行：标签 + 滑杆 + 数值框（可手输精确值）
-    private func addSliderRow(label: String, min: Int, max: Int,
+    /// 滑杆行：标签 + 滑杆 + 数值框（可手输精确值，↑↓ 方向键 ±1 微调、⇧ ±10）
+    private func addSliderRow(label: String, hint: String, min: Int, max: Int,
                               get: @escaping (Settings) -> Int,
                               set: @escaping (inout Settings, Int) -> Void) {
-        let slider = NSSlider()
+        let slider = FineSlider()
         slider.minValue = Double(min)
         slider.maxValue = Double(max)
         slider.isContinuous = true
@@ -248,11 +250,14 @@ final class ControlPanel: NSView {
         let field = makeValueField(min: min, max: max)
         field.target = self
         field.action = #selector(valueFieldFired(_:))
+        field.delegate = self
 
         objcSetSetter(slider, SetterBox { s, v in set(&s, v) })
         objcSetSetter(field, SetterBox { s, v in set(&s, v) })
         objcSetLinked(slider, field)
         objcSetLinked(field, slider)
+        objcSetHint(slider, hint)
+        objcSetHint(field, hint)
 
         _ = makeRow([makeSmallLabel(label), slider, field])
         slider.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -315,6 +320,7 @@ final class ControlPanel: NSView {
         let v = Int(sender.doubleValue.rounded())
         setter.f(&settings, v)
         if let linked = objcGetLinked(sender) as? NSTextField { linked.integerValue = v }
+        if let hint = objcGetHint(sender) { onAdjustHint?("\(hint)：\(v)") }
         notifyChanged()
     }
 
@@ -387,6 +393,52 @@ final class ControlPanel: NSView {
     }
 }
 
+// MARK: - FineSlider：滑杆支持 ↑↓←→ ±1 微调（⇧ ±10）
+
+/// NSSlider 原生方向键步进是范围的百分比（0-4000 会一步跳几十），校准场景需要 ±1 精调
+final class FineSlider: NSSlider {
+    override func keyDown(with event: NSEvent) {
+        let shift = event.modifierFlags.contains(.shift)
+        switch event.keyCode {
+        case 126, 124:  // ↑ →
+            step(shift ? 10 : 1)
+        case 125, 123:  // ↓ ←
+            step(shift ? -10 : -1)
+        default:
+            super.keyDown(with: event)
+        }
+    }
+
+    private func step(_ delta: Int) {
+        doubleValue += Double(delta)  // NSSlider 自动夹在 min/max
+        needsDisplay = true
+        if let target = target as? NSObject, let action = action {
+            target.perform(action, with: self)
+        }
+    }
+}
+
+// MARK: - 数值框 ↑↓ 方向键微调
+
+extension ControlPanel: NSControlTextEditingDelegate {
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard let field = control as? NSTextField, commandSelector == #selector(NSResponder.moveUp(_:))
+                || commandSelector == #selector(NSResponder.moveDown(_:)) else { return false }
+        guard let setter = objcGetSetter(field) else { return false }
+        let delta = commandSelector == #selector(NSResponder.moveUp(_:)) ? 1 : -1
+        var v = field.integerValue + delta
+        let fmt = field.formatter as? NumberFormatter
+        if let lo = fmt?.minimum?.intValue { v = max(v, lo) }
+        if let hi = fmt?.maximum?.intValue { v = min(v, hi) }
+        field.integerValue = v
+        setter.f(&settings, v)
+        if let linked = objcGetLinked(field) as? NSSlider { linked.doubleValue = Double(v) }
+        if let hint = objcGetHint(field) { onAdjustHint?("\(hint)：\(v)") }
+        notifyChanged()
+        return true
+    }
+}
+
 // MARK: - NSMenuDelegate（相机下拉框展开前刷新设备列表）
 
 extension ControlPanel: NSMenuDelegate {
@@ -402,6 +454,7 @@ private enum Keys {
     nonisolated(unsafe) static var setter = 0
     nonisolated(unsafe) static var linked = 0
     nonisolated(unsafe) static var colorBinder = 0
+    nonisolated(unsafe) static var hint = 0
 }
 
 private final class SetterBox { let f: (inout Settings, Int) -> Void; init(_ f: @escaping (inout Settings, Int) -> Void) { self.f = f } }
@@ -416,5 +469,7 @@ private func objcSetSetter(_ o: AnyObject, _ b: SetterBox) { objc_setAssociatedO
 private func objcGetSetter(_ o: AnyObject) -> SetterBox? { objc_getAssociatedObject(o, &Keys.setter) as? SetterBox }
 private func objcSetLinked(_ o: AnyObject, _ linked: AnyObject) { objc_setAssociatedObject(o, &Keys.linked, linked, .OBJC_ASSOCIATION_RETAIN) }
 private func objcGetLinked(_ o: AnyObject) -> AnyObject? { objc_getAssociatedObject(o, &Keys.linked) as AnyObject? }
+private func objcSetHint(_ o: AnyObject, _ hint: String) { objc_setAssociatedObject(o, &Keys.hint, hint, .OBJC_ASSOCIATION_RETAIN) }
+private func objcGetHint(_ o: AnyObject) -> String? { objc_getAssociatedObject(o, &Keys.hint) as? String }
 private func objcSetColorBinder(_ o: AnyObject, _ b: ColorBinderBox) { objc_setAssociatedObject(o, &Keys.colorBinder, b, .OBJC_ASSOCIATION_RETAIN) }
 private func objcGetColorBinder(_ o: AnyObject) -> ColorBinderBox? { objc_getAssociatedObject(o, &Keys.colorBinder) as? ColorBinderBox }
