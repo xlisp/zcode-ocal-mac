@@ -50,7 +50,8 @@ final class CameraService: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
 
     private static func isExternal(_ device: AVCaptureDevice) -> Bool {
         if #available(macOS 14.0, *) { return device.deviceType == .external }
-        return device.deviceType == .unknown || device.modelID.contains("UVC")
+        // 旧系统：内置 FaceTime 摄像头 modelID 以 "Apple" 开头，UVC 外接相机包含 "UVC"
+        return device.modelID.contains("UVC") || !device.modelID.hasPrefix("Apple")
     }
 
     static func displayName(of device: AVCaptureDevice) -> String {
@@ -79,7 +80,6 @@ final class CameraService: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                     self.session.addOutput(self.output)
                     self.configured = true
                 }
-                self.session.sessionPreset = .inputPriority
                 let input = try AVCaptureDeviceInput(device: device)
                 self.session.addInput(input)
                 self.session.commitConfiguration()
@@ -144,7 +144,7 @@ final class CameraService: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     func captureOutput(_ output: AVCaptureOutput,
                        didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
-        guard let pixelBuffer = CMSampleBufferGetPixelBuffer(sampleBuffer) else { return }
+        guard let pixelBuffer = sampleBuffer.imageBuffer else { return }
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         // 在采集线程完成转换，主线程只负责绘制
         guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else { return }
