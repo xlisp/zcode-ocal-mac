@@ -27,6 +27,7 @@ final class ControlPanel: NSView {
     private let resolutionField = NSTextField(labelWithString: "分辨率 --*--")
     private let profilePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let storeField = NSTextField(labelWithString: "")
+    private let focusField = NSTextField(labelWithString: "定心：未读取")
 
     private let mainStack = NSStackView()
 
@@ -136,6 +137,10 @@ final class ControlPanel: NSView {
 
         // ── 圆心偏移 ──────────────────────────────
         addHeader("圆心偏移")
+        focusField.font = NSFont.systemFont(ofSize: 10)
+        focusField.textColor = .secondaryLabelColor
+        focusField.lineBreakMode = .byTruncatingMiddle
+        addFullWidthRow(focusField)
         addCheckboxRow(label: "启用圆心偏移",
                        get: { $0.offset.enabled }, set: { s, v in s.offset.enabled = v })
         addSliderRow(label: "上    下", min: -100, max: 100,
@@ -147,8 +152,8 @@ final class ControlPanel: NSView {
         focusRow.orientation = .horizontal
         focusRow.distribution = .fillEqually
         focusRow.spacing = 6
-        for b in [NSButton(title: "保存圆心", target: self, action: #selector(saveFocusAction(_:))),
-                  NSButton(title: "载入圆心", target: self, action: #selector(loadFocusAction(_:)))] {
+        for b in [NSButton(title: "保存定心", target: self, action: #selector(saveFocusAction(_:))),
+                  NSButton(title: "载入定心", target: self, action: #selector(loadFocusAction(_:)))] {
             b.bezelStyle = .rounded
             b.controlSize = .small
             focusRow.addArrangedSubview(b)
@@ -375,6 +380,10 @@ final class ControlPanel: NSView {
 
     func setStoreHint(_ text: String) {
         storeField.stringValue = text
+    }
+
+    func setFocusInfo(_ text: String) {
+        focusField.stringValue = text
     }
 }
 

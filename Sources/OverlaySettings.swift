@@ -104,6 +104,35 @@ extension Settings {
     }
 }
 
+// MARK: - 定心编码坐标（focus.txt）
+// 每台设备唯一的圆心标定数据：坐标在记录分辨率下测量，换算到当前相机分辨率后
+// 作为叠加圆心（偏移滑杆在其上做微调）。
+
+struct FocusCalibration {
+    var center: CGPoint       // 记录分辨率下的像素坐标
+    var reference: CGSize?    // 记录时的相机分辨率（旧格式文件无此信息，为 nil）
+}
+
+extension FocusCalibration {
+
+    /// 换算到当前相机分辨率下的圆心。
+    /// 旧格式（无记录分辨率）：坐标若落在当前分辨率内则视为当前分辨率坐标；
+    /// 否则按 4K 满幅（3264×2448，原版工具对应的相机）折算。
+    func scaledCenter(forResolution size: CGSize) -> CGPoint {
+        let ref: CGSize
+        if let r = reference {
+            ref = r
+        } else if center.x >= 0, center.x <= size.width, center.y >= 0, center.y <= size.height {
+            ref = size
+        } else {
+            ref = CGSize(width: 3264, height: 2448)
+        }
+        guard ref.width > 0, ref.height > 0 else { return center }
+        return CGPoint(x: center.x * size.width / ref.width,
+                       y: center.y * size.height / ref.height)
+    }
+}
+
 // MARK: - 配置存取
 // 优先「便携模式」：若 OCAL.app 同级目录存在 config*.txt（比如直接放进原版 ocal-win 目录），
 // 则直接读写该目录，与原版「配置在 exe 旁」的行为一致；否则用 ~/Library/Application Support/OCAL/
@@ -161,17 +190,26 @@ enum ConfigStore {
         try? settings.serialized().write(to: url, atomically: true, encoding: .utf8)
     }
 
-    /// focus.txt 格式（原版）：`0 0 <cx> <cy>`，cx/cy 为图像像素坐标（保留两位小数）
-    static func loadFocus() -> CGPoint? {
+    /// focus.txt 格式（原版）：`0 0 <cx> <cy>`，cx/cy 为**定心编码坐标**——
+    /// 每台设备唯一，在该设备相机满幅分辨率下标定（例：3264×2448 相机 → 1616.83, 1172.13）。
+    /// Mac 版扩展格式在其后追加记录分辨率：`0 0 <cx> <cy> <refW> <refH>`（原版按固定字段数读取，兼容）。
+    static func loadFocus() -> FocusCalibration? {
         guard let text = try? String(contentsOf: focusURL, encoding: .utf8) else { return nil }
         let tokens = text.split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\n" || $0 == "\r" })
         guard tokens.count >= 4,
               let x = Double(tokens[2]), let y = Double(tokens[3]) else { return nil }
-        return CGPoint(x: x, y: y)
+        var ref: CGSize? = nil
+        if tokens.count >= 6, let w = Double(tokens[4]), let h = Double(tokens[5]), w > 0, h > 0 {
+            ref = CGSize(width: w, height: h)
+        }
+        return FocusCalibration(center: CGPoint(x: x, y: y), reference: ref)
     }
 
-    static func saveFocus(_ point: CGPoint) {
-        let text = String(format: "0 0 %.2f %.2f", point.x, point.y)
+    static func saveFocus(_ focus: FocusCalibration) {
+        var text = String(format: "0 0 %.2f %.2f", focus.center.x, focus.center.y)
+        if let ref = focus.reference {
+            text += String(format: " %.0f %.0f", ref.width, ref.height)
+        }
         try? text.write(to: focusURL, atomically: true, encoding: .utf8)
     }
 

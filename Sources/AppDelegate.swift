@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cameraService.onFrame = { [weak self] image, size in
             guard let self = self else { return }
             if self.videoView.imageSize != size {
-                // 分辨率变化 → 更新标签并自动切换档案
+                // 分辨率变化 → 更新标签、自动切换档案、按定心编码坐标计算圆心偏移
                 self.videoView.imageSize = size
                 self.panel.setResolution(size)
                 let auto = ConfigStore.profile(forResolution: size)
@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.panel.apply(s)
                     UserDefaults.standard.set(auto, forKey: "lastProfile")
                 }
+                self.applyFocusCenter(resolution: size)
             }
             self.videoView.frameImage = image
         }
@@ -75,8 +76,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 下拉框每次展开前刷新（授权完成后列表可能才可用）
         panel.onRefreshDevices = { [weak self] in self?.refreshDeviceList() }
 
+        // 启动即显示定心编码坐标信息（应用要等相机分辨率确定后进行）
+        if let focus = ConfigStore.loadFocus() {
+            updateFocusInfo(focus)
+        } else {
+            panel.setFocusInfo("定心：focus.txt 未配置（圆心=画面中心）")
+        }
+
         window.center()
         window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(videoView)
+        buildMenu()
         saveEnabled = true
 
         // 调试：带 --autostart 参数启动时自动尝试开启摄像头
@@ -172,34 +182,83 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.onSaveFocus = { [weak self] in
             guard let self = self else { return }
             guard self.videoView.frameImage != nil else {
-                self.showAlert(messageText: "保存圆心", informativeText: "请先开启摄像头。")
+                self.showAlert(messageText: "保存定心", informativeText: "请先开启摄像头。")
                 return
             }
+            // 把当前有效圆心（定心 + 偏移微调）写回 focus.txt，作为本设备定心编码坐标
             let size = self.videoView.imageSize
             let cx = size.width / 2 + CGFloat(self.settings.offset.horizontal)
             let cy = size.height / 2 + CGFloat(self.settings.offset.vertical)
-            ConfigStore.saveFocus(CGPoint(x: cx, y: cy))
-            self.showAlert(messageText: "保存圆心",
-                           informativeText: String(format: "已写入 focus.txt：中心 = (%.2f, %.2f)", cx, cy))
+            let focus = FocusCalibration(center: CGPoint(x: cx, y: cy), reference: size)
+            ConfigStore.saveFocus(focus)
+            self.updateFocusInfo(focus)
+            self.showAlert(messageText: "保存定心",
+                           informativeText: String(format: "已写入 focus.txt：定心 = (%.2f, %.2f) @%.0f×%.0f",
+                                                   cx, cy, size.width, size.height))
         }
         panel.onLoadFocus = { [weak self] in
             guard let self = self else { return }
+            guard let focus = ConfigStore.loadFocus() else {
+                self.showAlert(messageText: "载入定心", informativeText: "focus.txt 不存在或格式不对。")
+                return
+            }
             guard self.videoView.frameImage != nil else {
-                self.showAlert(messageText: "载入圆心", informativeText: "请先开启摄像头（需要知道当前分辨率）。")
+                // 相机未开时只显示信息；开相机后会自动应用
+                self.updateFocusInfo(focus)
+                self.showAlert(messageText: "载入定心", informativeText: "已读取，开启摄像头后将自动应用。")
                 return
             }
-            guard let p = ConfigStore.loadFocus() else {
-                self.showAlert(messageText: "载入圆心", informativeText: "focus.txt 不存在或格式不对。")
-                return
-            }
-            let size = self.videoView.imageSize
-            var s = self.settings
-            s.offset.horizontal = Int((p.x - size.width / 2).rounded())
-            s.offset.vertical = Int((p.y - size.height / 2).rounded())
-            s.offset.enabled = true
-            self.settings = s
-            self.panel.apply(s)
+            self.applyFocusCenter(resolution: self.videoView.imageSize, focus: focus)
         }
+    }
+
+    // MARK: - 定心编码坐标（focus.txt，每台设备唯一）
+
+    /// 把定心坐标换算到当前分辨率并写入偏移（偏移滑杆在此基础上做微调）
+    private func applyFocusCenter(resolution size: CGSize, focus loaded: FocusCalibration? = nil) {
+        guard let focus = loaded ?? ConfigStore.loadFocus() else {
+            panel.setFocusInfo("定心：focus.txt 未配置（圆心=画面中心）")
+            return
+        }
+        let c = focus.scaledCenter(forResolution: size)
+        var s = settings
+        s.offset.horizontal = Int((c.x - size.width / 2).rounded())
+        s.offset.vertical = Int((c.y - size.height / 2).rounded())
+        s.offset.enabled = true
+        settings = s
+        panel.apply(s)
+        updateFocusInfo(focus)
+    }
+
+    private func updateFocusInfo(_ focus: FocusCalibration?) {
+        guard let focus = focus else { return }
+        let ref = focus.reference.map { String(format: "记录于 %.0f×%.0f", $0.width, $0.height) } ?? "旧格式（按满幅折算）"
+        panel.setFocusInfo(String(format: "定心编码: (%.2f, %.2f) %@", focus.center.x, focus.center.y, ref))
+    }
+
+    // MARK: - 主菜单（⌘+ / ⌘- / ⌘0 缩放快捷键）
+
+    private func buildMenu() {
+        let main = NSMenu()
+
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "关于 OCAL", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "隐藏 OCAL", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "退出 OCAL", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let viewItem = NSMenuItem()
+        let viewMenu = NSMenu(title: "视图")
+        viewMenu.addItem(withTitle: "放大", action: #selector(VideoView.zoomIn(_:)), keyEquivalent: "+")
+        viewMenu.addItem(withTitle: "缩小", action: #selector(VideoView.zoomOut(_:)), keyEquivalent: "-")
+        viewMenu.addItem(withTitle: "重置缩放", action: #selector(VideoView.zoomReset(_:)), keyEquivalent: "0")
+        viewItem.submenu = viewMenu
+        main.addItem(viewItem)
+
+        NSApp.mainMenu = main
     }
 
     // MARK: - 摄像头
