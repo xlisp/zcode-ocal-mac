@@ -9,10 +9,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelScroll: NSScrollView!
 
     private let cameraService = CameraService()
+    private var saveEnabled = false  // 启动载入时不回写，仅用户改动后保存
     private var settings = Settings() {
         didSet {
             videoView.settings = settings
-            ConfigStore.save(settings)
+            if saveEnabled { ConfigStore.save(settings) }
         }
     }
 
@@ -65,6 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         window.center()
         window.makeKeyAndOrderFront(nil)
+        saveEnabled = true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
