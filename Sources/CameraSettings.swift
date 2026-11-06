@@ -236,8 +236,9 @@ final class CameraSettingsController: NSWindowController, NSWindowDelegate {
             if device.exposureMode != .custom, device.isExposureModeSupported(.custom) {
                 device.exposureMode = .custom
             }
-            device.activeVideoMinFrameDuration = duration
+            // 先 max 后 min，避免 min > max 瞬态抛异常
             device.activeVideoMaxFrameDuration = duration
+            device.activeVideoMinFrameDuration = duration
         } catch { showAlert(error) }
         syncShutterUI()
     }

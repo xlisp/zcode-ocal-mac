@@ -131,11 +131,19 @@ final class CameraService: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         do {
             try device.lockForConfiguration()
             device.activeFormat = format
+            // 帧率设置：先放宽到范围边界，再逐步收紧。
+            // 注意顺序必须先 max 后 min，否则会出现 min > max 的瞬态而抛 ObjC 异常。
             if let range = format.videoSupportedFrameRateRanges.max(by: { $0.maxFrameRate < $1.maxFrameRate }) {
+                let maxD = range.maxFrameDuration    // 最长（最慢）
+                let minD = range.minFrameDuration    // 最短（最快）
                 let fps = min(max(range.maxFrameRate, 1), 30)
-                let duration = CMTime(value: 1, timescale: CMTimeScale((fps).rounded()))
-                device.activeVideoMinFrameDuration = duration
-                device.activeVideoMaxFrameDuration = duration
+                let desired = CMTime(value: 1, timescale: CMTimeScale(max(fps, 1).rounded()))
+                // 收紧到目标帧率（限制在支持范围内）
+                let clamped = CMTimeMinimum(CMTimeMaximum(desired, minD), maxD)
+                device.activeVideoMaxFrameDuration = maxD
+                device.activeVideoMinFrameDuration = minD
+                device.activeVideoMaxFrameDuration = clamped
+                device.activeVideoMinFrameDuration = clamped
             }
             device.unlockForConfiguration()
         } catch {

@@ -67,6 +67,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.makeKeyAndOrderFront(nil)
         saveEnabled = true
+
+        // 调试：带 --autostart 参数启动时自动尝试开启摄像头
+        if CommandLine.arguments.contains("--autostart") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.startCamera()
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
