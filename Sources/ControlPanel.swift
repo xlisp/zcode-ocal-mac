@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 
 /// 左侧控制面板：复刻原版 MFC 对话框的分组与控件
 /// （摄像头 / 圈1 / 圈2 / 圈3 / 准星 / 圆心偏移）

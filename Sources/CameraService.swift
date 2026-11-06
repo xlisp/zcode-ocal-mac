@@ -29,16 +29,28 @@ final class CameraService: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     // MARK: 设备枚举
 
     static func discoverDevices() -> [AVCaptureDevice] {
-        let session = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.external, .builtInWideAngleCamera],
-            mediaType: .video,
-            position: .unspecified)
+        let devices: [AVCaptureDevice]
+        if #available(macOS 14.0, *) {
+            let session = AVCaptureDevice.DiscoverySession(
+                deviceTypes: [.external, .builtInWideAngleCamera],
+                mediaType: .video,
+                position: .unspecified)
+            devices = session.devices
+        } else {
+            // macOS 13 及以前：外接相机通过 devices(for:) 枚举，deviceType 为 .unknown
+            devices = AVCaptureDevice.devices(for: .video)
+        }
         // 外接 UVC 工业相机优先
-        return session.devices.sorted { a, b in
-            let ea = a.deviceType == .external, eb = b.deviceType == .external
+        return devices.sorted { a, b in
+            let ea = isExternal(a), eb = isExternal(b)
             if ea != eb { return ea }
             return a.localizedName < b.localizedName
         }
+    }
+
+    private static func isExternal(_ device: AVCaptureDevice) -> Bool {
+        if #available(macOS 14.0, *) { return device.deviceType == .external }
+        return device.deviceType == .unknown || device.modelID.contains("UVC")
     }
 
     static func displayName(of device: AVCaptureDevice) -> String {
