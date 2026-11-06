@@ -150,9 +150,9 @@ final class CameraSettingsController: NSWindowController, NSWindowDelegate {
             row.addArrangedSubview(l)
         }
         row.addArrangedSubview(view)
+        stack.addArrangedSubview(row)
         row.leadingAnchor.constraint(equalTo: stack.leadingAnchor).isActive = true
         row.trailingAnchor.constraint(equalTo: stack.trailingAnchor).isActive = true
-        stack.addArrangedSubview(row)
     }
 
     /// 打开时同步当前设备状态

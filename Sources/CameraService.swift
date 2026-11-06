@@ -40,8 +40,12 @@ final class CameraService: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             // macOS 13 及以前：外接相机通过 devices(for:) 枚举，deviceType 为 .unknown
             devices = AVCaptureDevice.devices(for: .video)
         }
+        // 过滤 iPhone/iPad 连续互通相机（工业场景不适用）
+        let usable = devices.filter {
+            !($0.localizedName.contains("iPhone") || $0.localizedName.contains("iPad"))
+        }
         // 外接 UVC 工业相机优先
-        return devices.sorted { a, b in
+        return usable.sorted { a, b in
             let ea = isExternal(a), eb = isExternal(b)
             if ea != eb { return ea }
             return a.localizedName < b.localizedName

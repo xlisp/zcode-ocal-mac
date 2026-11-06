@@ -30,11 +30,8 @@ final class ControlPanel: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        try? "p1\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
         buildUI()
-        try? "p2\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
         apply(settings)
-        try? "p3\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) 未实现") }
@@ -58,13 +55,11 @@ final class ControlPanel: NSView {
 
         // ── 摄像头组 ──────────────────────────────
         addHeader("摄像头")
-        try? "c1\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
 
         devicePopup.target = self
         devicePopup.action = #selector(deviceChanged(_:))
         devicePopup.controlSize = .small
         addFullWidthRow(devicePopup)
-        try? "c2\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
 
         let buttonRow = NSStackView(views: [])
         buttonRow.orientation = .horizontal
@@ -80,7 +75,6 @@ final class ControlPanel: NSView {
         buttonRow.addArrangedSubview(toggleButton)
         buttonRow.addArrangedSubview(settingsButton)
         addFullWidthRow(buttonRow)
-        try? "c3\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
 
         resolutionField.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         addFullWidthRow(resolutionField)
@@ -97,13 +91,11 @@ final class ControlPanel: NSView {
         profilePopup.controlSize = .small
         profileRow.addArrangedSubview(profilePopup)
         addFullWidthRow(profileRow)
-        try? "c4\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
 
         storeField.font = NSFont.systemFont(ofSize: 9)
         storeField.textColor = .secondaryLabelColor
         storeField.lineBreakMode = .byTruncatingMiddle
         addFullWidthRow(storeField)
-        try? "c5\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
 
         // ── 圈1 / 圈2 / 圈3 ──────────────────────────
         for (title, circle): (String, WritableKeyPath<Settings, CircleConfig>) in [
@@ -166,12 +158,10 @@ final class ControlPanel: NSView {
     private func addHeader(_ text: String) {
         let label = NSTextField(labelWithString: text)
         label.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        addFullWidthRow(label)
         let rule = NSBox()
         rule.boxType = .separator
-        rule.translatesAutoresizingMaskIntoConstraints = false
-        rule.widthAnchor.constraint(equalTo: mainStack.widthAnchor, constant: -24).isActive = true
-        addFullWidthRow(label)
-        mainStack.addArrangedSubview(rule)
+        addFullWidthRow(rule)  // 先入栈再约束，否则两视图无共同祖先会抛异常
     }
 
     /// 整行控件（横向撑满面板宽度）
@@ -187,9 +177,7 @@ final class ControlPanel: NSView {
         row.orientation = .horizontal
         row.spacing = 6
         row.alignment = .centerY
-        row.leadingAnchor.constraint(equalTo: mainStack.leadingAnchor).isActive = true
-        row.trailingAnchor.constraint(equalTo: mainStack.trailingAnchor).isActive = true
-        mainStack.addArrangedSubview(row)
+        addFullWidthRow(row)
         return row
     }
 
