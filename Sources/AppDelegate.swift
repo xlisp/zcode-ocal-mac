@@ -67,10 +67,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.makeKeyAndOrderFront(nil)
         saveEnabled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.dumpFrames() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func dumpFrames() {
+        guard let cw = window.contentView else { print("DBG no content"); return }
+        print("DBG content: \(cw.frame)")
+        for v in cw.subviews { print("DBG   \(type(of: v)): \(v.frame)") }
+        if let doc = panelScroll.documentView { print("DBG docView: \(doc.frame)") }
+        print("DBG videoView: \(videoView.frame) panelScroll: \(panelScroll.frame)")
+        print("DBG window: \(window.frame) isVisible=\(window.isVisible) occlusion=\(window.occlusionState.rawValue)")
     }
 
     // MARK: - 窗口
