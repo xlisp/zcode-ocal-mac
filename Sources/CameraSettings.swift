@@ -1,30 +1,31 @@
 import AppKit
 import AVFoundation
+import CoreMedia
 
 /// 摄像头设置面板（对应原版的「摄像头设置」DirectShow 属性页）
-/// 提供格式/曝光/对焦/白平衡/镜像等 AVFoundation 可控项，按设备实际支持情况启用
+///
+/// 说明：macOS 的 AVFoundation 不提供 iOS 那套手动曝光时长/镜片位置/白平衡增益接口，
+/// 这里只提供系统真实可控的项：格式（分辨率/帧率）、曝光模式、帧时长（UVC 相机的实际手动曝光手段）、
+/// 对焦模式、白平衡模式（锁定当前值）、镜像。按设备实际支持情况启用。
 final class CameraSettingsController: NSWindowController, NSWindowDelegate {
 
     private let device: AVCaptureDevice
     private let service: CameraService
 
     private let stack = NSStackView()
-    private var exposureAuto: NSButton?
-    private var exposureSlider: NSSlider?
-    private var exposureLabel: NSTextField?
-    private var focusAuto: NSButton?
-    private var focusSlider: NSSlider?
-    private var wbAuto: NSButton?
-    private var wbSlider: NSSlider?
-    private var wbLabel: NSTextField?
-    private var mirrorCheck: NSButton?
     private var formatPopup: NSPopUpButton?
+    private var exposureAuto: NSButton?
+    private var shutterSlider: NSSlider?
+    private var shutterLabel: NSTextField?
+    private var focusAuto: NSButton?
+    private var wbAuto: NSButton?
+    private var mirrorCheck: NSButton?
 
     init(device: AVCaptureDevice, service: CameraService) {
         self.device = device
         self.service = service
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 340, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 380),
             styleMask: [.titled, .closable],
             backing: .buffered, defer: false)
         window.title = "摄像头设置 — \(CameraService.displayName(of: device))"
@@ -66,7 +67,12 @@ final class CameraSettingsController: NSWindowController, NSWindowDelegate {
         let formats = device.formats.sorted(by: {
             let a = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
             let b = CMVideoFormatDescriptionGetDimensions($1.formatDescription)
-            return a.width * a.height > b.width * b.height
+            if a.width * a.height != b.width * b.height {
+                return a.width * a.height > b.width * b.height
+            }
+            let fa = $0.videoSupportedFrameRateRanges.map { $0.maxFrameRate }.max() ?? 0
+            let fb = $1.videoSupportedFrameRateRanges.map { $0.maxFrameRate }.max() ?? 0
+            return fa > fb
         })
         for format in formats {
             let d = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
@@ -76,121 +82,92 @@ final class CameraSettingsController: NSWindowController, NSWindowDelegate {
             if format == device.activeFormat { formatPopup.select(formatPopup.lastItem!) }
         }
         self.formatPopup = formatPopup
-        addRow(label: "格式", views: [formatPopup])
-        if formats.isEmpty {
-            formatPopup.isEnabled = false
-        }
+        addRow(label: "格式", view: formatPopup)
+        if formats.isEmpty { formatPopup.isEnabled = false }
 
         // 曝光
-        if device.isExposureModeSupported(.custom) || device.isExposureModeSupported(.autoExpose) || device.isExposureModeSupported(.continuousAuto) {
+        if device.isExposureModeSupported(.autoExpose) || device.isExposureModeSupported(.continuousAutoExposure)
+            || device.isExposureModeSupported(.locked) || device.isExposureModeSupported(.custom) {
             let auto = NSButton(checkboxWithTitle: "自动曝光", target: self, action: #selector(exposureAutoChanged(_:)))
             auto.controlSize = .small
+            exposureAuto = auto
+            addRow(label: "曝光", view: auto)
+
             let slider = NSSlider()
             slider.minValue = 0
             slider.maxValue = 1000
-            slider.isContinuous = true
+            slider.isContinuous = false  // 手动曝光时才起效，拖完再设置
             slider.controlSize = .small
             slider.target = self
-            slider.action = #selector(exposureSliderChanged(_:))
+            slider.action = #selector(shutterSliderChanged(_:))
             let label = NSTextField(labelWithString: "-- ms")
             label.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-            exposureAuto = auto
-            exposureSlider = slider
-            exposureLabel = label
+            shutterSlider = slider
+            shutterLabel = label
+            let hint = NSTextField(labelWithString: "手动模式：帧时长（快门），拖动后应用")
+            hint.font = NSFont.systemFont(ofSize: 9)
+            hint.textColor = .secondaryLabelColor
             let row = NSStackView(views: [slider, label])
             row.orientation = .horizontal
             row.spacing = 6
-            addRow(label: "曝光", views: [auto])
-            addRow(label: "", views: [row])
+            row.alignment = .centerY
+            addRow(label: "", view: row)
+            addRow(label: "", view: hint)
         }
 
         // 对焦
-        if device.isFocusModeSupported(.locked) || device.isFocusModeSupported(.continuousAuto) {
+        if device.isFocusModeSupported(.continuousAutoFocus) || device.isFocusModeSupported(.locked) {
             let auto = NSButton(checkboxWithTitle: "自动对焦", target: self, action: #selector(focusAutoChanged(_:)))
             auto.controlSize = .small
-            let slider = NSSlider()
-            slider.minValue = 0
-            slider.maxValue = 100
-            slider.isContinuous = true
-            slider.controlSize = .small
-            slider.target = self
-            slider.action = #selector(focusSliderChanged(_:))
             focusAuto = auto
-            focusSlider = slider
-            addRow(label: "对焦", views: [auto])
-            let row = NSStackView(views: [slider])
-            row.orientation = .horizontal
-            row.spacing = 6
-            addRow(label: "", views: [row])
+            addRow(label: "对焦", view: auto)
         }
 
         // 白平衡
         if device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) || device.isWhiteBalanceModeSupported(.locked) {
-            let auto = NSButton(checkboxWithTitle: "自动白平衡", target: self, action: #selector(wbAutoChanged(_:)))
+            let auto = NSButton(checkboxWithTitle: "自动白平衡（取消勾选=锁定当前值）", target: self, action: #selector(wbAutoChanged(_:)))
             auto.controlSize = .small
-            let slider = NSSlider()
-            slider.minValue = 2800
-            slider.maxValue = 8500
-            slider.isContinuous = true
-            slider.controlSize = .small
-            slider.target = self
-            slider.action = #selector(wbSliderChanged(_:))
-            let label = NSTextField(labelWithString: "-- K")
-            label.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
             wbAuto = auto
-            wbSlider = slider
-            wbLabel = label
-            addRow(label: "白平衡", views: [auto])
-            let row = NSStackView(views: [slider, label])
-            row.orientation = .horizontal
-            row.spacing = 6
-            addRow(label: "", views: [row])
+            addRow(label: "白平衡", view: auto)
         }
 
         // 镜像
         let mirror = NSButton(checkboxWithTitle: "画面左右镜像", target: self, action: #selector(mirrorChanged(_:)))
         mirror.controlSize = .small
         mirrorCheck = mirror
-        addRow(label: "镜像", views: [mirror])
+        addRow(label: "镜像", view: mirror)
     }
 
-    private func addRow(label: String, views: [NSView]) {
-        let row = NSStackView(views: views)
+    private func addRow(label: String, view: NSView) {
+        let row = NSStackView(views: [])
         row.orientation = .horizontal
         row.spacing = 6
         row.alignment = .centerY
-        row.translatesAutoresizingMaskIntoConstraints = false
         if !label.isEmpty {
             let l = NSTextField(labelWithString: label)
             l.font = NSFont.systemFont(ofSize: 11, weight: .semibold)
             l.setContentHuggingPriority(.required, for: .horizontal)
-            row.insertArrangedSubview(l, at: 0)
-            row.leadingAnchor.constraint(equalTo: stack.leadingAnchor).isActive = true
+            row.addArrangedSubview(l)
         }
-        stack.addArrangedSubview(row)
+        row.addArrangedSubview(view)
+        row.leadingAnchor.constraint(equalTo: stack.leadingAnchor).isActive = true
         row.trailingAnchor.constraint(equalTo: stack.trailingAnchor).isActive = true
+        stack.addArrangedSubview(row)
     }
 
     /// 打开时同步当前设备状态
     private func refresh() {
         if let exposureAuto = exposureAuto {
-            let isAuto = device.exposureMode == .continuousAuto || device.exposureMode == .autoExpose
+            let isAuto = device.exposureMode == .autoExpose || device.exposureMode == .continuousAutoExposure
             exposureAuto.state = isAuto ? .on : .off
-            exposureSlider?.isEnabled = !isAuto
-            if !isAuto { syncExposureUI() }
+            shutterSlider?.isEnabled = !isAuto
+            if !isAuto { syncShutterUI() }
         }
         if let focusAuto = focusAuto {
-            let isAuto = device.focusMode == .continuousAuto
-            focusAuto.state = isAuto ? .on : .off
-            focusSlider?.isEnabled = !isAuto
-            if !isAuto {
-                focusSlider?.doubleValue = Double(device.lensPosition) * 100
-            }
+            focusAuto.state = (device.focusMode == .continuousAutoFocus || device.focusMode == .autoFocus) ? .on : .off
         }
         if let wbAuto = wbAuto {
-            let isAuto = device.whiteBalanceMode == .continuousAutoWhiteBalance
-            wbAuto.state = isAuto ? .on : .off
-            wbSlider?.isEnabled = !isAuto
+            wbAuto.state = (device.whiteBalanceMode == .continuousAutoWhiteBalance) ? .on : .off
         }
         if let mirror = mirrorCheck {
             let supported = service.videoConnection?.isVideoMirroringSupported ?? false
@@ -199,16 +176,26 @@ final class CameraSettingsController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func syncExposureUI() {
-        let d = device.exposureDuration
-        let ms = d.isValid ? d.seconds * 1000 : 0
-        exposureLabel?.stringValue = ms >= 100 ? String(format: "%.0f ms", ms) : String(format: "%.2f ms", ms)
-        // 对数刻度滑杆
-        let minD = device.minExposureDuration.seconds
-        let maxD = device.maxExposureDuration.seconds
-        if maxD > minD, minD > 0, ms > 0 {
-            let t = log(ms / 1000 / minD) / log(maxD / minD)
-            exposureSlider?.doubleValue = max(0, min(1, t)) * 1000
+    /// 帧时长滑杆（对数刻度：格式最短帧时长 ~ 最长帧时长）
+    private var shutterRange: (minSeconds: Double, maxSeconds: Double) {
+        let ranges = device.activeFormat.videoSupportedFrameRateRanges
+        let minSec = ranges.map { $0.minFrameDuration.seconds }.min() ?? 0.033
+        let maxSec = ranges.map { $0.maxFrameDuration.seconds }.max() ?? 1.0
+        return (max(minSec, 0.001), max(maxSec, minSec))
+    }
+
+    private func syncShutterUI() {
+        let d = device.activeVideoMaxFrameDuration
+        guard d.isValid, d.seconds > 0 else {
+            shutterLabel?.stringValue = "-- ms"
+            return
+        }
+        let ms = d.seconds * 1000
+        shutterLabel?.stringValue = ms >= 100 ? String(format: "%.0f ms", ms) : String(format: "%.1f ms", ms)
+        let (lo, hi) = shutterRange
+        if hi > lo {
+            let t = log(d.seconds / lo) / log(hi / lo)
+            shutterSlider?.doubleValue = max(0, min(1, t)) * 1000
         }
     }
 
@@ -217,6 +204,7 @@ final class CameraSettingsController: NSWindowController, NSWindowDelegate {
     @objc private func formatChanged(_ sender: NSPopUpButton) {
         guard let format = sender.selectedItem?.representedObject as? AVCaptureDevice.Format else { return }
         CameraService.setFormat(format, on: device)
+        syncShutterUI()
     }
 
     @objc private func exposureAutoChanged(_ sender: NSButton) {
@@ -225,37 +213,33 @@ final class CameraSettingsController: NSWindowController, NSWindowDelegate {
             try device.lockForConfiguration()
             defer { device.unlockForConfiguration() }
             if auto {
-                if device.isExposureModeSupported(.continuousAuto) { device.exposureMode = .continuousAuto }
+                if device.isExposureModeSupported(.continuousAutoExposure) { device.exposureMode = .continuousAutoExposure }
                 else if device.isExposureModeSupported(.autoExpose) { device.exposureMode = .autoExpose }
             } else {
-                if device.isExposureModeSupported(.custom) {
-                    device.setExposureModeCustom(duration: device.exposureDuration)
-                } else if device.isExposureModeSupported(.locked) {
-                    device.exposureMode = .locked
-                }
+                // 手动：custom（若支持，此时帧时长即曝光时长）否则锁定当前
+                if device.isExposureModeSupported(.custom) { device.exposureMode = .custom }
+                else if device.isExposureModeSupported(.locked) { device.exposureMode = .locked }
             }
         } catch { showAlert(error) }
         refresh()
     }
 
-    @objc private func exposureSliderChanged(_ sender: NSSlider) {
-        let minD = device.minExposureDuration.seconds
-        let maxD = device.maxExposureDuration.seconds
-        guard maxD > minD, minD > 0 else { return }
+    @objc private func shutterSliderChanged(_ sender: NSSlider) {
+        let (lo, hi) = shutterRange
+        guard hi > lo else { return }
         let t = sender.doubleValue / 1000.0
-        let seconds = minD * pow(maxD / minD, t)
-        let duration = CMTime(seconds: seconds, preferredTimescale: 100000)
+        let seconds = lo * pow(hi / lo, t)
+        let duration = CMTime(seconds: seconds, preferredTimescale: 100_000)
         do {
             try device.lockForConfiguration()
             defer { device.unlockForConfiguration() }
-            if device.isExposureModeSupported(.custom) {
-                device.setExposureModeCustom(duration: duration)
-            } else if device.isExposureModeSupported(.locked) {
-                device.exposureMode = .locked
-                device.activeVideoMaxFrameDuration = CMTime(seconds: max(seconds, 1.0 / 61.0), preferredTimescale: 600)
+            if device.exposureMode != .custom, device.isExposureModeSupported(.custom) {
+                device.exposureMode = .custom
             }
+            device.activeVideoMinFrameDuration = duration
+            device.activeVideoMaxFrameDuration = duration
         } catch { showAlert(error) }
-        syncExposureUI()
+        syncShutterUI()
     }
 
     @objc private func focusAutoChanged(_ sender: NSButton) {
@@ -264,24 +248,14 @@ final class CameraSettingsController: NSWindowController, NSWindowDelegate {
             try device.lockForConfiguration()
             defer { device.unlockForConfiguration() }
             if auto {
-                if device.isFocusModeSupported(.continuousAuto) { device.focusMode = .continuousAuto }
+                if device.isFocusModeSupported(.continuousAutoFocus) { device.focusMode = .continuousAutoFocus }
+                else if device.isFocusModeSupported(.autoFocus) { device.focusMode = .autoFocus }
             } else {
-                if device.isFocusModeSupported(.locked) {
-                    device.setFocusModeLocked(lensPosition: Float(focusSlider?.doubleValue ?? 50) / 100)
-                }
+                // 锁定当前对焦位置（macOS 不提供镜头位置数值控制）
+                if device.isFocusModeSupported(.locked) { device.focusMode = .locked }
             }
         } catch { showAlert(error) }
         refresh()
-    }
-
-    @objc private func focusSliderChanged(_ sender: NSSlider) {
-        do {
-            try device.lockForConfiguration()
-            defer { device.unlockForConfiguration() }
-            if device.isFocusModeSupported(.locked) {
-                device.setFocusModeLocked(lensPosition: Float(sender.doubleValue) / 100)
-            }
-        } catch { showAlert(error) }
     }
 
     @objc private func wbAutoChanged(_ sender: NSButton) {
@@ -294,25 +268,10 @@ final class CameraSettingsController: NSWindowController, NSWindowDelegate {
                     device.whiteBalanceMode = .continuousAutoWhiteBalance
                 }
             } else {
-                if device.isWhiteBalanceModeSupported(.locked) {
-                    wbSliderChanged(wbSlider ?? NSSlider())
-                }
+                if device.isWhiteBalanceModeSupported(.locked) { device.whiteBalanceMode = .locked }
             }
         } catch { showAlert(error) }
         refresh()
-    }
-
-    @objc private func wbSliderChanged(_ sender: NSSlider) {
-        guard device.isWhiteBalanceModeSupported(.locked) else { return }
-        let temperature = Float(sender.doubleValue)
-        let values = AVCaptureDevice.WhiteBalanceTemperatureAndTintValues(temperature: temperature, tint: 0)
-        let gains = device.deviceWhiteBalanceGains(for: values)
-        do {
-            try device.lockForConfiguration()
-            defer { device.unlockForConfiguration() }
-            device.setWhiteBalanceModeLocked(with: gains)
-        } catch { showAlert(error) }
-        wbLabel?.stringValue = "\(Int(temperature)) K"
     }
 
     @objc private func mirrorChanged(_ sender: NSButton) {

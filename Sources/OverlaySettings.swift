@@ -114,7 +114,7 @@ enum ConfigStore {
         guard let besideApp = Bundle.main.bundleURL.deletingLastPathComponent() as URL? else { return nil }
         let dir = besideApp.path
         let names = ["config720.txt", "config1080.txt", "config1k.txt", "config4k.txt", "focus.txt"]
-        guard names.contains(where: { FileManager.default.fileIsReadable(atPath: dir + "/" + $0) }) else { return nil }
+        guard names.contains(where: { FileManager.default.isReadableFile(atPath: dir + "/" + $0) }) else { return nil }
         return besideApp
     }
 
@@ -158,7 +158,7 @@ enum ConfigStore {
 
     static func save(_ settings: Settings) {
         let url = configURL(profile: settings.profile)
-        try? settings.serialized().writing(to: url, atomically: true, encoding: .utf8)
+        try? settings.serialized().write(to: url, atomically: true, encoding: .utf8)
     }
 
     /// focus.txt 格式（原版）：`0 0 <cx> <cy>`，cx/cy 为图像像素坐标（保留两位小数）
@@ -172,7 +172,7 @@ enum ConfigStore {
 
     static func saveFocus(_ point: CGPoint) {
         let text = String(format: "0 0 %.2f %.2f", point.x, point.y)
-        try? text.writing(to: focusURL, atomically: true, encoding: .utf8)
+        try? text.write(to: focusURL, atomically: true, encoding: .utf8)
     }
 
     /// 按相机分辨率自动选档案（720p / 1k / 1080p / 4k）

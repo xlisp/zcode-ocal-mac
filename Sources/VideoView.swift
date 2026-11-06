@@ -30,8 +30,8 @@ final class VideoView: NSView {
         layer?.backgroundColor = NSColor.black.cgColor
     }
 
-    override var acceptsFirstMouse: Bool { true }
-    override var isFlipped: Bool { false }  // 使用 CG 的 y 向上坐标系
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    // 使用默认的 y 向上坐标系（与 CG 一致）
 
     /// 当前视频内容在视图中的显示矩形（aspect-fit）
     private func videoRect(in bounds: NSRect) -> NSRect {

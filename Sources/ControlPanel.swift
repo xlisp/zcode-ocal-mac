@@ -302,14 +302,14 @@ final class ControlPanel: NSView {
 
     @objc private func checkboxFired(_ sender: NSButton) {
         guard let setter = objcGetSetter(sender) else { return }
-        setter(&settings, sender.state == .on ? 1 : 0)
+        setter.f(&settings, sender.state == .on ? 1 : 0)
         notifyChanged()
     }
 
     @objc private func sliderFired(_ sender: NSSlider) {
         guard let setter = objcGetSetter(sender) else { return }
         let v = Int(sender.doubleValue.rounded())
-        setter(&settings, v)
+        setter.f(&settings, v)
         if let linked = objcGetLinked(sender) as? NSTextField { linked.integerValue = v }
         notifyChanged()
     }
@@ -321,7 +321,7 @@ final class ControlPanel: NSView {
         if let lo = fmt?.minimum?.intValue { v = max(v, lo) }
         if let hi = fmt?.maximum?.intValue { v = min(v, hi) }
         sender.integerValue = v
-        setter(&settings, v)
+        setter.f(&settings, v)
         if let linked = objcGetLinked(sender) as? NSSlider { linked.doubleValue = Double(v) }
         notifyChanged()
     }
@@ -398,6 +398,6 @@ private final class ColorBinderBox {
 private func objcSetSetter(_ o: AnyObject, _ b: SetterBox) { objc_setAssociatedObject(o, &Keys.setter, b, .OBJC_ASSOCIATION_RETAIN) }
 private func objcGetSetter(_ o: AnyObject) -> SetterBox? { objc_getAssociatedObject(o, &Keys.setter) as? SetterBox }
 private func objcSetLinked(_ o: AnyObject, _ linked: AnyObject) { objc_setAssociatedObject(o, &Keys.linked, linked, .OBJC_ASSOCIATION_RETAIN) }
-private func objcGetLinked(_ o: AnyObject) -> AnyObject? { objc_getAssociatedObject(o, &Keys.linked) }
+private func objcGetLinked(_ o: AnyObject) -> AnyObject? { objc_getAssociatedObject(o, &Keys.linked) as AnyObject? }
 private func objcSetColorBinder(_ o: AnyObject, _ b: ColorBinderBox) { objc_setAssociatedObject(o, &Keys.colorBinder, b, .OBJC_ASSOCIATION_RETAIN) }
 private func objcGetColorBinder(_ o: AnyObject) -> ColorBinderBox? { objc_getAssociatedObject(o, &Keys.colorBinder) as? ColorBinderBox }
