@@ -30,8 +30,11 @@ final class ControlPanel: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        try? "p1\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
         buildUI()
+        try? "p2\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
         apply(settings)
+        try? "p3\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) 未实现") }
@@ -97,6 +100,7 @@ final class ControlPanel: NSView {
         storeField.lineBreakMode = .byTruncatingMiddle
         addFullWidthRow(storeField)
 
+        try? "b1\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
         // ── 圈1 / 圈2 / 圈3 ──────────────────────────
         for (title, circle): (String, WritableKeyPath<Settings, CircleConfig>) in [
             ("圈1设置", \Settings.circle1),
@@ -118,6 +122,7 @@ final class ControlPanel: NSView {
                          set: { s, v in s[keyPath: circle].thickness = v })
         }
 
+        try? "b2\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
         // ── 准星设置 ──────────────────────────────
         addHeader("准星设置")
         addCheckboxRow(label: "启    用",
@@ -131,6 +136,7 @@ final class ControlPanel: NSView {
         addSliderRow(label: "角    度", min: 0, max: 360,
                      get: { $0.cross.angle }, set: { s, v in s.cross.angle = v })
 
+        try? "b3\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
         // ── 圆心偏移 ──────────────────────────────
         addHeader("圆心偏移")
         addCheckboxRow(label: "启用圆心偏移",
@@ -151,6 +157,7 @@ final class ControlPanel: NSView {
             focusRow.addArrangedSubview(b)
         }
         addFullWidthRow(focusRow)
+        try? "b4\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
     }
 
     // MARK: 控件工厂

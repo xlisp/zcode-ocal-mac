@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindowController: CameraSettingsController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        try? "didFinishLaunching entered\n".write(toFile: "/tmp/ocal-dump.txt", atomically: true, encoding: .utf8)
         buildWindow()
 
         // 初始设置：上次使用的档案，默认 4k
@@ -67,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.makeKeyAndOrderFront(nil)
         saveEnabled = true
+        try? "buildWindow done\n".write(toFile: "/tmp/ocal-dump2.txt", atomically: true, encoding: .utf8)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.dumpFrames() }
     }
 
@@ -99,8 +101,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let content = NSView()
         window.contentView = content
 
+        try? "s1\n".write(toFile: "/tmp/ocal-dump2.txt", atomically: true, encoding: .utf8)
         videoView = VideoView(frame: .zero)
+        try? "s2\n".write(toFile: "/tmp/ocal-dump2.txt", atomically: true, encoding: .utf8)
         panel = ControlPanel(frame: .zero)
+        try? "s3\n".write(toFile: "/tmp/ocal-dump2.txt", atomically: true, encoding: .utf8)
         panelScroll = NSScrollView()
         panelScroll.documentView = panel
         panelScroll.hasVerticalScroller = true
@@ -129,7 +134,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             videoView.bottomAnchor.constraint(equalTo: content.bottomAnchor),
         ])
 
+        try? "s4\n".write(toFile: "/tmp/ocal-dump2.txt", atomically: true, encoding: .utf8)
         wirePanel()
+        try? "s5\n".write(toFile: "/tmp/ocal-dump2.txt", atomically: true, encoding: .utf8)
     }
 
     private func wirePanel() {
