@@ -58,11 +58,13 @@ final class ControlPanel: NSView {
 
         // ── 摄像头组 ──────────────────────────────
         addHeader("摄像头")
+        try? "c1\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
 
         devicePopup.target = self
         devicePopup.action = #selector(deviceChanged(_:))
         devicePopup.controlSize = .small
         addFullWidthRow(devicePopup)
+        try? "c2\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
 
         let buttonRow = NSStackView(views: [])
         buttonRow.orientation = .horizontal
@@ -78,6 +80,7 @@ final class ControlPanel: NSView {
         buttonRow.addArrangedSubview(toggleButton)
         buttonRow.addArrangedSubview(settingsButton)
         addFullWidthRow(buttonRow)
+        try? "c3\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
 
         resolutionField.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         addFullWidthRow(resolutionField)
@@ -94,13 +97,14 @@ final class ControlPanel: NSView {
         profilePopup.controlSize = .small
         profileRow.addArrangedSubview(profilePopup)
         addFullWidthRow(profileRow)
+        try? "c4\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
 
         storeField.font = NSFont.systemFont(ofSize: 9)
         storeField.textColor = .secondaryLabelColor
         storeField.lineBreakMode = .byTruncatingMiddle
         addFullWidthRow(storeField)
+        try? "c5\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
 
-        try? "b1\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
         // ── 圈1 / 圈2 / 圈3 ──────────────────────────
         for (title, circle): (String, WritableKeyPath<Settings, CircleConfig>) in [
             ("圈1设置", \Settings.circle1),
@@ -122,7 +126,6 @@ final class ControlPanel: NSView {
                          set: { s, v in s[keyPath: circle].thickness = v })
         }
 
-        try? "b2\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
         // ── 准星设置 ──────────────────────────────
         addHeader("准星设置")
         addCheckboxRow(label: "启    用",
@@ -136,7 +139,6 @@ final class ControlPanel: NSView {
         addSliderRow(label: "角    度", min: 0, max: 360,
                      get: { $0.cross.angle }, set: { s, v in s.cross.angle = v })
 
-        try? "b3\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
         // ── 圆心偏移 ──────────────────────────────
         addHeader("圆心偏移")
         addCheckboxRow(label: "启用圆心偏移",
@@ -157,7 +159,6 @@ final class ControlPanel: NSView {
             focusRow.addArrangedSubview(b)
         }
         addFullWidthRow(focusRow)
-        try? "b4\n".write(toFile: "/tmp/ocal-dump3.txt", atomically: true, encoding: .utf8)
     }
 
     // MARK: 控件工厂
