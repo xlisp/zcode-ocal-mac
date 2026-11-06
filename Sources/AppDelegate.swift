@@ -96,6 +96,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelScroll.drawsBackground = true
         panelScroll.backgroundColor = NSColor.controlBackgroundColor
         panelScroll.borderType = .noBorder
+        // documentView 需要显式初始尺寸：先按内容算高度，再跟随滚动视图宽度
+        panel.setFrameOrigin(.zero)
+        panel.setFrameSize(NSSize(width: 248, height: 0))
+        let fittingHeight = panel.fittingSize.height
+        panel.setFrameSize(NSSize(width: 248, height: max(fittingHeight, 100)))
+        panel.autoresizingMask = [.width]
 
         for v: NSView in [panelScroll, videoView] {
             content.addSubview(v)
@@ -108,8 +114,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelScroll.topAnchor.constraint(equalTo: content.topAnchor),
             panelScroll.bottomAnchor.constraint(equalTo: content.bottomAnchor),
             panelScroll.widthAnchor.constraint(equalToConstant: 248),
-            // 面板内容跟随滚动视图宽度
-            panel.widthAnchor.constraint(equalTo: panelScroll.contentView.widthAnchor),
             // 右侧视频区
             videoView.leadingAnchor.constraint(equalTo: panelScroll.trailingAnchor),
             videoView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
